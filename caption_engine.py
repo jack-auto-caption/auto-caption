@@ -71,17 +71,29 @@ def transcribe(wav_path, language, task="transcribe"):
 _PUNCT_END = (".", "।", "?", "!", ",", "…")
 
 
-def group_lines(words, max_words=5, max_dur=2.8):
-    """Group word timings into short caption lines."""
+def group_lines(words, max_words=5, max_dur=2.8, max_chars=24):
+    """Group word timings into short caption lines.
+
+    max_chars matters: a line that is too wide wraps onto a second line
+    in the renderer, and a bottom-anchored two-line block sits higher
+    than a one-line block - the captions visibly jump up and down.
+    Lines are kept short enough to always stay on ONE line."""
     lines, cur = [], []
+    cur_chars = 0
     for i, w in enumerate(words):
+        wlen = len(w["word"]) + (1 if cur else 0)
+        if cur and cur_chars + wlen > max_chars:
+            lines.append(cur)
+            cur, cur_chars = [], 0
+            wlen = len(w["word"])
         cur.append(w)
+        cur_chars += wlen
         line_dur = w["end"] - cur[0]["start"]
         gap_next = (words[i + 1]["start"] - w["end"]) if i + 1 < len(words) else 99
         if (len(cur) >= max_words or line_dur >= max_dur
                 or w["word"].endswith(_PUNCT_END) or gap_next > 0.7):
             lines.append(cur)
-            cur = []
+            cur, cur_chars = [], 0
     if cur:
         lines.append(cur)
     return lines
@@ -137,8 +149,17 @@ Style: Cap,Noto Sans Devanagari,{fontsize},&H00FFFFFF,&H0000FFFF,&H00000000,&H64
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     events = []
+    avail_w = width - margin_l - margin_r
     for line in lines:
         texts = [_esc(w["word"]) for w in line]
+        # Safety net: if a line still estimates too wide for one line,
+        # shrink its font for these events so it can never wrap (a wrapped
+        # line is what makes captions jump up and down).
+        est_w = len(" ".join(texts)) * fontsize * 0.58
+        fs_tag = ""
+        if est_w > avail_w:
+            fs_line = max(20, int(fontsize * avail_w / est_w))
+            fs_tag = f"{{\\fs{fs_line}}}"
         for i, w in enumerate(line):
             start = w["start"]
             end = line[i + 1]["start"] if i + 1 < len(line) else w["end"]
@@ -150,7 +171,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 else:
                     parts.append(t)
             events.append(
-                f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Cap,,0,0,0,,{' '.join(parts)}"
+                f"Dialogue: 0,{_ass_time(start)},{_ass_time(end)},Cap,,0,0,0,,{fs_tag}{' '.join(parts)}"
             )
         # hold the full line (all white) through any trailing pause up to next line start
     with open(ass_path, "w", encoding="utf-8") as f:
