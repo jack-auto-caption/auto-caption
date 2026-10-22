@@ -187,7 +187,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 def burn(video_path, ass_name, width, height, out_path, workdir):
     vf = f"subtitles={ass_name}:original_size={width}x{height}"
     _run(["ffmpeg", "-y", "-v", "error", "-i", os.path.abspath(video_path),
-          "-vf", vf, "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+          "-vf", vf, "-c:v", "libx264", "-preset", "veryfast", "-threads", "2",
+          "-crf", "20",
           "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", os.path.abspath(out_path)],
          cwd=workdir)
 
