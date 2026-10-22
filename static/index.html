@@ -138,7 +138,14 @@ go.onclick = async () => {
 
   const timer = setInterval(async () => {
     try {
-      const j = await (await fetch('/api/jobs/' + job)).json();
+      const resp = await fetch('/api/jobs/' + job);
+      if (resp.status === 404) {
+        clearInterval(timer);
+        return fail('Server restart ho gaya aur ye job kho gaya. Ek baar phir try karo — aksar dusri baar ho jata hai.');
+      }
+      if (!resp.ok) return; // temporary glitch, keep polling
+      const j = await resp.json();
+      if (!j.stage) return;
       document.getElementById('stage').textContent = '⏳ ' + j.stage + '…';
       const key = Object.keys(STAGE_PCT).find(k => j.stage.startsWith(k));
       if (key) document.getElementById('fill').style.width = STAGE_PCT[key] + '%';
