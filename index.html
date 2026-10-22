@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Auto Caption — Upload Video, Get Captioned Video</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: #0e0e13; color: #f2f2f5; min-height: 100vh; }
+  .wrap { max-width: 680px; margin: 0 auto; padding: 40px 20px 60px; }
+  h1 { font-size: 30px; text-align: center; }
+  h1 .y { color: #ffd21f; }
+  .sub { text-align: center; color: #a7a7b3; margin: 10px 0 30px; font-size: 15px; }
+  #drop { border: 2px dashed #3a3a48; border-radius: 16px; padding: 44px 20px;
+          text-align: center; cursor: pointer; transition: .2s; background: #15151d; }
+  #drop:hover, #drop.over { border-color: #ffd21f; background: #1a1a12; }
+  #drop .big { font-size: 42px; }
+  #drop p { color: #a7a7b3; margin-top: 8px; font-size: 14px; }
+  #fname { color: #ffd21f; font-weight: 600; margin-top: 10px; word-break: break-all; }
+  .row { display: flex; gap: 12px; margin-top: 18px; flex-wrap: wrap; }
+  .row label { flex: 1; min-width: 150px; font-size: 13px; color: #a7a7b3; }
+  select { width: 100%; margin-top: 6px; padding: 12px; border-radius: 10px;
+           background: #1b1b25; color: #fff; border: 1px solid #33333f; font-size: 15px; }
+  #go { width: 100%; margin-top: 20px; padding: 15px; border: 0; border-radius: 12px;
+        background: #ffd21f; color: #111; font-size: 17px; font-weight: 700; cursor: pointer; }
+  #go:disabled { opacity: .45; cursor: not-allowed; }
+  #status { margin-top: 26px; display: none; text-align: center; }
+  .bar { height: 10px; background: #22222e; border-radius: 99px; overflow: hidden; margin: 14px 0 8px; }
+  .bar i { display: block; height: 100%; width: 12%; background: #ffd21f;
+           border-radius: 99px; transition: width .6s; animation: pulse 1.2s infinite alternate; }
+  @keyframes pulse { from { filter: brightness(.85);} to { filter: brightness(1.2);} }
+  #stage { color: #d8d8e0; font-size: 15px; }
+  #hint { color: #77778a; font-size: 13px; margin-top: 6px; }
+  #result { margin-top: 26px; display: none; text-align: center; }
+  #result video { width: 100%; max-height: 65vh; border-radius: 14px; background: #000; }
+  #dl { display: inline-block; margin-top: 16px; padding: 14px 28px; background: #22c55e;
+        color: #08130b; font-weight: 700; border-radius: 12px; text-decoration: none; font-size: 16px; }
+  #again { display: block; margin: 14px auto 0; background: none; border: 0; color: #a7a7b3;
+           cursor: pointer; font-size: 14px; text-decoration: underline; }
+  #err { margin-top: 20px; display: none; background: #2a1215; color: #ffb4b4;
+         border: 1px solid #7f1d1d; padding: 14px; border-radius: 12px; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Auto <span class="y">Caption</span></h1>
+  <p class="sub">Video upload karo → caption laga hua video wapas download karo.<br>Koi SRT file nahi, caption seedha video ke andar.</p>
+
+  <div id="drop">
+    <div class="big">🎬</div>
+    <p><b style="color:#fff">Click ya drag karke video daalo</b></p>
+    <p>MP4 / MOV / MKV — max 500 MB</p>
+    <div id="fname"></div>
+  </div>
+  <input type="file" id="file" accept="video/*" hidden>
+
+  <div class="row">
+    <label>Caption kis language me?
+      <select id="mode">
+        <option value="hindi" selected>Hindi — देवनागरी</option>
+        <option value="hinglish">Hinglish — Roman Hindi</option>
+        <option value="english">English — Translation</option>
+        <option value="original">Original — jaisi boli, waisi</option>
+      </select>
+    </label>
+    <label>Caption ki position
+      <select id="position">
+        <option value="bottom" selected>⬇️ Neeche — Beech me (Bottom Center)</option>
+        <option value="mid">↘️ Beech-Neeche (Mid-Down)</option>
+        <option value="center">⏺️ Bilkul Beech me (Center)</option>
+        <option value="top">⬆️ Upar — Beech me (Top Center)</option>
+        <option value="bottom-left">↙️ Neeche — Left</option>
+        <option value="bottom-right">↘️ Neeche — Right</option>
+        <option value="top-left">↖️ Upar — Left</option>
+        <option value="top-right">↗️ Upar — Right</option>
+      </select>
+    </label>
+  </div>
+
+  <button id="go" disabled>Caption Lagao ✨</button>
+
+  <div id="status">
+    <div id="stage">Starting…</div>
+    <div class="bar"><i id="fill"></i></div>
+    <div id="hint">45 sec ke video ko lagbhag 1–2 minute lagte hain. Page band mat karna.</div>
+  </div>
+
+  <div id="err"></div>
+
+  <div id="result">
+    <video id="preview" controls playsinline></video>
+    <br>
+    <a id="dl" href="#" download="captioned-video.mp4">⬇ Captioned Video Download Karo</a>
+    <button id="again">Ek aur video karna hai</button>
+  </div>
+</div>
+
+<script>
+const drop = document.getElementById('drop'), fileIn = document.getElementById('file'),
+      go = document.getElementById('go'), fname = document.getElementById('fname');
+let chosen = null;
+
+drop.onclick = () => fileIn.click();
+drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); pick(e.dataTransfer.files[0]); };
+fileIn.onchange = () => pick(fileIn.files[0]);
+
+function pick(f) {
+  if (!f) return;
+  chosen = f;
+  fname.textContent = '📹 ' + f.name + ' (' + (f.size/1048576).toFixed(1) + ' MB)';
+  go.disabled = false;
+}
+
+const STAGE_PCT = { 'Starting': 8, 'Reading video': 15, 'Extracting audio': 28,
+                    'Listening': 55, 'Styling': 78, 'Burning': 92, 'Done': 100 };
+
+go.onclick = async () => {
+  if (!chosen) return;
+  go.disabled = true;
+  document.getElementById('err').style.display = 'none';
+  document.getElementById('result').style.display = 'none';
+  const st = document.getElementById('status'); st.style.display = 'block';
+
+  const fd = new FormData();
+  fd.append('file', chosen);
+  fd.append('mode', document.getElementById('mode').value);
+  fd.append('position', document.getElementById('position').value);
+
+  let job;
+  try {
+    const r = await fetch('/api/jobs', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error((await r.json()).detail || 'Upload failed');
+    job = (await r.json()).job_id;
+  } catch (e) { return fail(e.message); }
+
+  const timer = setInterval(async () => {
+    try {
+      const j = await (await fetch('/api/jobs/' + job)).json();
+      document.getElementById('stage').textContent = '⏳ ' + j.stage + '…';
+      const key = Object.keys(STAGE_PCT).find(k => j.stage.startsWith(k));
+      if (key) document.getElementById('fill').style.width = STAGE_PCT[key] + '%';
+      if (j.status === 'done') {
+        clearInterval(timer);
+        st.style.display = 'none';
+        const url = '/api/jobs/' + job + '/video';
+        document.getElementById('preview').src = url;
+        document.getElementById('dl').href = url;
+        document.getElementById('result').style.display = 'block';
+        go.disabled = false;
+      } else if (j.status === 'error') {
+        clearInterval(timer);
+        fail(j.error || 'Something went wrong');
+      }
+    } catch (e) { /* keep polling */ }
+  }, 2000);
+};
+
+function fail(msg) {
+  document.getElementById('status').style.display = 'none';
+  const e = document.getElementById('err');
+  e.textContent = '❌ ' + msg;
+  e.style.display = 'block';
+  go.disabled = false;
+}
+
+document.getElementById('again').onclick = () => location.reload();
+</script>
+</body>
+</html>

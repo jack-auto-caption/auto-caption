@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: auto-caption
+    runtime: docker
+    plan: free
+    envVars:
+      - key: WHISPER_MODEL
+        value: base
