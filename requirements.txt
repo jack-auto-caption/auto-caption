@@ -3,3 +3,4 @@ uvicorn[standard]
 python-multipart
 faster-whisper==1.2.1
 av==14.2.0
+vosk
