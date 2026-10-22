@@ -16,10 +16,7 @@ Pipeline (all local, no paid API):
 import json
 import os
 import subprocess
-import threading
 
-_model = None
-_model_lock = threading.Lock()
 MODEL_SIZE = os.environ.get("WHISPER_MODEL", "small")
 
 
@@ -46,33 +43,26 @@ def extract_audio(video_path, wav_path):
           "-vn", "-ac", "1", "-ar", "16000", wav_path])
 
 
-def get_model():
-    global _model
-    with _model_lock:
-        if _model is None:
-            from faster_whisper import WhisperModel
-            _model = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
-        return _model
-
-
 def transcribe(wav_path, language, task="transcribe"):
     """language: 'hi', 'en', ... or None for auto-detect.
-    task='translate' makes Whisper output English whatever the spoken language."""
-    model = get_model()
-    segments, _info = model.transcribe(
-        wav_path,
-        language=language,
-        task=task,
-        word_timestamps=True,
-        vad_filter=True,
-        beam_size=5,
+    task='translate' makes Whisper output English whatever the spoken language.
+
+    Runs in a subprocess (transcribe_worker.py) so the Whisper model's
+    memory is fully freed when it exits - on a 512 MB free server the
+    web process + model in one process OOMs mid-job (verified live)."""
+    import subprocess
+    import sys
+    out_json = wav_path + ".words.json"
+    worker = os.path.join(os.path.dirname(os.path.abspath(__file__)), "transcribe_worker.py")
+    env = dict(os.environ, WHISPER_MODEL=MODEL_SIZE, OMP_NUM_THREADS="2")
+    p = subprocess.run(
+        [sys.executable, worker, wav_path, language or "none", task, out_json],
+        capture_output=True, text=True, env=env,
     )
-    words = []
-    for seg in segments:
-        for w in seg.words or []:
-            text = (w.word or "").strip()
-            if text:
-                words.append({"word": text, "start": float(w.start), "end": float(w.end)})
+    if p.returncode != 0:
+        raise RuntimeError(f"Transcription failed:\n{p.stderr[-600:]}")
+    with open(out_json, encoding="utf-8") as f:
+        words = json.load(f)
     if not words:
         raise RuntimeError("No speech detected in this video.")
     return words
@@ -206,7 +196,7 @@ def caption_video(input_path, workdir, mode="hindi", position="bottom",
     say("Extracting audio")
     extract_audio(input_path, wav)
 
-    say("Listening and writing captions (Whisper)")
+    say("Listening and writing captions")
     if mode == "english":
         words = transcribe(wav, None, task="translate")
     elif mode in ("hindi", "hinglish"):
