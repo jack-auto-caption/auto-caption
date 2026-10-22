@@ -59,6 +59,17 @@ async def create_job(file: UploadFile = File(...),
     if position not in caption_engine.POSITIONS:
         position = "bottom"
 
+    # One job at a time: the free server has only 512 MB RAM. Two jobs
+    # running together (e.g. a retry while the first is still working)
+    # blow past it and the whole instance restarts, killing BOTH jobs
+    # (verified live 2026-10-22: three OOM restarts in one afternoon).
+    with jobs_lock:
+        busy = any(j["status"] == "working" for j in jobs.values())
+    if busy:
+        raise HTTPException(409, "Ek video abhi ban raha hai — use pura hone do, "
+                                   "phir dusra daalna. Free server ek time pe ek "
+                                   "hi video utha pata hai.")
+
     job_id = uuid.uuid4().hex[:12]
     workdir = os.path.join(JOBS_DIR, job_id)
     os.makedirs(workdir)
