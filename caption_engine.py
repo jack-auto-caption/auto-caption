@@ -112,8 +112,13 @@ def _esc(text):
 
 # Caption positions: name -> (ASS alignment, vertical margin as fraction of height)
 # ASS alignment grid: 7 8 9 top / 4 5 6 middle / 1 2 3 bottom (left center right)
+# "bar" is top-anchored (alignment 8, margin from the TOP): it places the
+# caption right under the picture, inside the bottom black bar of the
+# Socho-Zara layout (720x1280: picture ends at ~78% of the height, the
+# caption starts at ~79%) - measured from Jack's reference video.
 POSITIONS = {
     "bottom":       (2, 0.07),
+    "bar":          (8, 0.78),
     "mid":          (2, 0.30),
     "center":       (5, 0.0),
     "top":          (8, 0.07),
